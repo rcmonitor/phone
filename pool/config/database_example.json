@@ -1,0 +1,6 @@
+{
+  "Addr": "host.local:5432",
+  "Database": "test_db",
+  "Password": "pass",
+  "User": "username"
+}

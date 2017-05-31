@@ -1,0 +1,5 @@
+pool/.idea
+pool/config/database.json
+pool/log/*
+pool/sql/
+*.exe

@@ -15,6 +15,7 @@ import (
 	"strings"
 	"bufio"
 	"regexp"
+	"fmt"
 )
 
 const(
@@ -63,6 +64,7 @@ func (app *TApp) mProcessArguments() (err error) {
 
 	app.pathOutput = flag.String("o", "", "Output file path; Used on reformatting.")
 
+	flag.Usage = fUsage
 	flag.Parse()
 
 	app.fOptions, err = app.mOpenFile(app.pathOptions)
@@ -193,13 +195,23 @@ func (app *TApp) mFormat() (err error) {
 	scSource := bufio.NewScanner(app.fCSV)
 
 	scSource.Scan()
-	app.fOutput.WriteString("#" + scSource.Text() + "\n")
+	//let's comment first string which is, kinda, header
+	var strFirst string
+	if strFirst, err = fWinToUtf(scSource.Text()); err != nil { return err }
+	app.fOutput.WriteString("#" + strFirst + "\n")
 
 	replacer := strings.NewReplacer("\t", "", "\"", "\"\"")
 	preStrings, err := regexp.Compile(`^(\d+;\d+;\d+;\d+;)(\D+);(\D+)$`)
 	if err != nil { return }
+
+	var strSource string
 	for scSource.Scan() {
-		strNew := replacer.Replace(scSource.Text())
+
+		//take care of lame encoding
+		strSource, err = fWinToUtf(scSource.Text())
+		if err != nil { return err }
+
+		strNew := replacer.Replace(strSource)
 		strNew = preStrings.ReplaceAllString(strNew, "$1\"$2\";\"$3\"\n")
 
 		if _, err = app.fOutput.WriteString(strNew); err != nil { return }
@@ -242,4 +254,12 @@ func (app *TApp) mOpenSource() error {
 	}
 
 	return err
+}
+
+func fUsage() {
+	fmt.Println("Usage:")
+	fmt.Println("1st form: pool -a (generate|drop) [-d <path to db settings>]")
+	fmt.Println("2nd form: pool -a format [-o <path to output file>] <path to input file>")
+	fmt.Println("3rd form: pool -a parse [-d <path to db settings>] <path to input file>")
+	flag.PrintDefaults()
 }

@@ -47,6 +47,8 @@ type TApp struct {
 
 	pathOutput *string
 	fOutput *os.File
+
+	errorCounter int
 }
 
 
@@ -201,29 +203,38 @@ func (app *TApp) mFormat() (err error) {
 	app.fOutput.WriteString("#" + strFirst + "\n")
 
 	replacer := strings.NewReplacer("\t", "", "\"", "\"\"")
-	preStrings, err := regexp.Compile(`^(\d+;\d+;\d+;\d+;)(\D+);(\D+)$`)
+	preStrings, err := regexp.Compile(`^(\d+;\d+;\d+;\d+;)([^;]+);([^;]+)$`)
 	if err != nil { return }
 
 	var strSource string
 	for scSource.Scan() {
 
+		if scSource.Text() == "" { continue }
+
 		//take care of lame encoding
 		strSource, err = fWinToUtf(scSource.Text())
 		if err != nil { return err }
 
-		strNew := replacer.Replace(strSource)
-		strNew = preStrings.ReplaceAllString(strNew, "$1\"$2\";\"$3\"\n")
+		//get rid of tabs
+		strTemp := replacer.Replace(strSource)
+		//add extra quotes
+		strNew := preStrings.ReplaceAllString(strTemp, "$1\"$2\";\"$3\"\n")
+
+		if strNew == strTemp {
+			rlog.Errorf("no quotes added to: '%s'", strTemp)
+			app.errorCounter ++
+		}
 
 		if _, err = app.fOutput.WriteString(strNew); err != nil { return }
 	}
 
 	err = scSource.Err()
-
 	return
 }
 
 func (app *TApp) mShutDown() {
 	app.db.Close()
+	rlog.Debugf("Got %d errors\n", app.errorCounter)
 }
 
 func (app *TApp) mPrepareOutputPath() {

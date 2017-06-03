@@ -2,9 +2,13 @@
 
 Tool to generate phone # sequences out of CSV source file with pool data.
 
+Keeps track of pools used for generation and will not use them again unless 'flush' action performed.
+Opens output file for addition, so it is safe to use this tool with same settings after media access error or user interrupt.
+Worst to happen is one pool to be generated twice.
+
 Initially created to deal with malformed CSV data created by russian hackers, so supports reformatting to proper CSV.
 
-Requires PostgresSQL database created to store temporarily parsed phone pools
+Requires PostgresSQL UTF-8 encoded database created to store temporarily parsed phone pools
 
 Required CSV data format:
 

@@ -1,6 +1,6 @@
-#Phone pool generator
+# Phone pool generator
 
-Tool to generate phone # sequences out of CSV source file with pool data.
+##### Tool to generate phone # sequences out of CSV source file with pool data.
 
 Keeps track of pools used for generation and will not use them again unless 'flush' action performed.
 Opens output file for addition, so it is safe to use this tool with same settings after media access error or user interrupt.
@@ -14,7 +14,7 @@ Required CSV data format:
 
 `code,pool_start,pool_end,pool_capacity,pool_owner,pool_region`
 
-Usage example:
+#### Usage example:
 
 ```
 go get github.com/rcmonitor/phone/pool

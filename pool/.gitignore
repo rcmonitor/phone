@@ -2,3 +2,4 @@
 .idea/
 config/database.json
 testdata/phone_list.txt
+data/phone_list.txt

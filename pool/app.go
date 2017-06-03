@@ -87,9 +87,14 @@ func (app *TApp) mReadGenerateFlags() (psSequence *TSequence, err error){
 	if err != nil { return }
 	intEndCode, err = strconv.Atoi(*app.codeEnd)
 	if err != nil { return }
-	slstrCode := strings.Split(*app.codeSet, ",")
+
+	var slstrCode []string
+	if *app.codeSet != "" {
+		slstrCode = strings.Split(*app.codeSet, ",")
+	}
 	slifCode, err := fStringToIfSlice(slstrCode)
 	if err != nil { return }
+
 
 	if app.f, err = app.mOpenDestinationFile(app.pathF); err != nil { return }
 
@@ -336,7 +341,7 @@ func (app *TApp) mFlags(){
 		"Number, ending of code pool. If omitted, will continue till the maximum code available")
 	app.codeSet = flag.String("s", "",
 		"Comma-delimeted set of numbers; the only codes to generate; \n" +
-			"\t\tIf provided, -b and -e flags are ignored\n")
+			"\tIf provided, -b and -e flags are ignored\n")
 
 	flag.Usage = fUsage
 }

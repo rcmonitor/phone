@@ -15,22 +15,26 @@ import (
 	"strings"
 	"bufio"
 	"regexp"
-	"fmt"
+	"strconv"
 )
 
 const(
-	_ = iota
-	ActionParse = iota
-	ActionGenerate = iota
-	ActionDrop = iota
+	_            = iota
+	ActionParse  = iota
+	ActionCreate = iota
+	ActionDrop   = iota
 	ActionFormat = iota
+	ActionGenerate = iota
+	ActionFlush = iota
 )
 
 var mapAction = map[string]int{
-	"parse": ActionParse,
-	"generate": ActionGenerate,
-	"drop": ActionDrop,
+	"parse":  ActionParse,
+	"create":   ActionCreate,
+	"drop":   ActionDrop,
 	"format": ActionFormat,
+	"generate": ActionGenerate,
+	"flush": ActionFlush,
 }
 
 type TTuple []string
@@ -40,10 +44,16 @@ type TApp struct {
 	fOptions *os.File
 	dbOptions *pg.Options
 	db        *pg.DB
+	actionString *string
 	action    int
 
-	fCSV *os.File
-	pathCSV string
+	prefix    *string
+	codeBegin *string
+	codeEnd   *string
+	codeSet *string
+
+	f     *os.File
+	pathF string
 
 	pathOutput *string
 	fOutput *os.File
@@ -54,47 +64,56 @@ type TApp struct {
 
 func (app *TApp) mProcessArguments() (err error) {
 
-	app.pathOptions = flag.String("d", "./config/database.json",
-		"Path to a json file with database connection information")
-	//pfSource := flag.String("s", "./data.csv", "Path to a CSV file with data to process")
-	pstrAction := flag.String("a", "parse",
-		"Action to perform; \n Available are: \n\t" +
-			" - 'parse' parses given csv file; \n\t" +
-			" - 'generate' generates table in existing database; \n\t" +
-			" - 'drop' drops table in existing database; \n\t" +
-			" - 'format' reformats bogus CSV to real CSV")
-
-	app.pathOutput = flag.String("o", "", "Output file path; Used on reformatting.")
-
-	flag.Usage = fUsage
+	app.mFlags()
 	flag.Parse()
 
-	app.fOptions, err = app.mOpenFile(app.pathOptions)
+	app.fOptions, err = app.mOpenSourceFile(app.pathOptions)
 	if err != nil { return }
 
-	err = app.mReadOptions()
-	if err != nil {
-		rlog.Debug(err)
-		return }
-
-	err = app.mReadAction(pstrAction)
+	err = app.mReadDBOptions()
 	if err != nil { return }
 
-	app.pathCSV = flag.Arg(0)
+	err = app.mReadAction()
+	if err != nil { return }
+
+	app.pathF = flag.Arg(0)
 
 	return
 }
 
-func (app *TApp) mReadAction(pstrAction *string) error {
+func (app *TApp) mReadGenerateFlags() (psSequence *TSequence, err error){
+	var intStartCode, intEndCode int
+	intStartCode, err = strconv.Atoi(*app.codeBegin)
+	if err != nil { return }
+	intEndCode, err = strconv.Atoi(*app.codeEnd)
+	if err != nil { return }
+	slstrCode := strings.Split(*app.codeSet, ",")
+	slifCode, err := fStringToIfSlice(slstrCode)
+	if err != nil { return }
+
+	if app.f, err = app.mOpenDestinationFile(app.pathF); err != nil { return }
+
+	psSequence = &TSequence{
+		Prefix:    *app.prefix,
+		StartCode: intStartCode,
+		EndCode:   intEndCode,
+		SlCode:    slifCode,
+		File:      app.f,
+	}
+
+	return
+}
+
+func (app *TApp) mReadAction() error {
 	var ok bool
-	if app.action, ok = mapAction[*pstrAction]; !ok {
-		return errors.New("Action '" + *pstrAction + "' not implemented")
+	if app.action, ok = mapAction[*app.actionString]; !ok {
+		return errors.New("Action '" + *app.actionString + "' not implemented")
 	}
 
 	return nil
 }
 
-func (app *TApp) mOpenFile(pstrFileName *string) (pf *os.File, err error) {
+func (app *TApp) mOpenSourceFile(pstrFileName *string) (pf *os.File, err error) {
 	pf, err = os.Open(*pstrFileName)
 	if err != nil {
 		err = &TErrorFile{*pstrFileName, err}
@@ -103,7 +122,19 @@ func (app *TApp) mOpenFile(pstrFileName *string) (pf *os.File, err error) {
 	return
 }
 
-func (app *TApp) mReadOptions() error {
+func (app *TApp) mOpenDestinationFile(strFileName string) (pf *os.File, err error) {
+	if strFileName == "" { strFileName = "./data/phone_list.txt" }
+	_, err = os.Stat(strFileName)
+	if err == nil {
+		return os.OpenFile(strFileName, os.O_WRONLY|os.O_APPEND, 0644)
+	}
+
+	if !os.IsNotExist(err) { return }
+
+	return os.Create(strFileName)
+}
+
+func (app *TApp) mReadDBOptions() error {
 
 	defer app.fOptions.Close()
 
@@ -122,39 +153,48 @@ func (app *TApp) mReadOptions() error {
 }
 
 func (app *TApp) mInit(){
-	app.db = pg.Connect(app.dbOptions)
+	DB = pg.Connect(app.dbOptions)
 }
 
 func (app *TApp) mRun() error {
 	switch app.action {
 	case ActionParse:
 		return app.mParse()
-	case ActionGenerate:
-		return app.mGenerate()
+	case ActionCreate:
+		return app.mCreate()
 	case ActionDrop:
 		return app.mDrop()
+	case ActionFlush:
+		return app.mFlush()
 	case ActionFormat:
 		return app.mFormat()
+	case ActionGenerate:
+		return app.mGenerate()
 	default:
 		return errors.New("Something went completely wrong")
 	}
 }
 
+func (app *TApp) mGenerate() (err error) {
+	psSequence, err := app.mReadGenerateFlags()
+	if err != nil { return }
+	defer app.f.Close()
+
+	return psSequence.mGenerate()
+}
+
 func (app *TApp) mParse() (err error) {
 
 	if err = app.mOpenSource(); err != nil { return }
-	defer app.fCSV.Close()
+	defer app.f.Close()
 
-	csvReader := csv.NewReader(app.fCSV)
+	csvReader := csv.NewReader(app.f)
 	csvReader.Comma = ';'
 	csvReader.Comment = '#'
 	csvReader.FieldsPerRecord = 6
 
 
 	var slTuple TTuple
-	//slTuple, err = csvReader.Read()
-	//if err != nil { return }
-	//rlog.Infof("CSV header: '%v'", slTuple)
 
 	for{
 		slTuple, err = csvReader.Read()
@@ -165,27 +205,34 @@ func (app *TApp) mParse() (err error) {
 		psdbmPool, err = NewPool(slTuple)
 		if err != nil { return }
 
-		err = psdbmPool.mSave(app.db)
+		err = psdbmPool.mSave()
 		if err != nil { return }
 	}
 
 	return nil
 }
 
-func (app *TApp) mGenerate() error {
-	return app.db.CreateTable(&TSDBMPool{}, &orm.CreateTableOptions{})
+func (app *TApp) mCreate() error {
+	return DB.CreateTable(&TSDBMPool{}, &orm.CreateTableOptions{})
 }
 
 func (app *TApp) mDrop() (err error) {
 	strQuery := "DROP TABLE IF EXISTS pool"
-	_, err = app.db.Exec(strQuery)
+	_, err = DB.Exec(strQuery)
+
+	return
+}
+
+func (app *TApp) mFlush() (err error) {
+	strQuery := "UPDATE pool SET generated = false"
+	_, err = DB.Exec(strQuery)
 
 	return
 }
 
 func (app *TApp) mFormat() (err error) {
 	if err = app.mOpenSource(); err != nil { return }
-	defer app.fCSV.Close()
+	defer app.f.Close()
 
 	//got no path for output file; let's make it out of input path
 	app.mPrepareOutputPath()
@@ -194,7 +241,7 @@ func (app *TApp) mFormat() (err error) {
 	if err != nil { return }
 	defer app.fOutput.Close()
 
-	scSource := bufio.NewScanner(app.fCSV)
+	scSource := bufio.NewScanner(app.f)
 
 	scSource.Scan()
 	//let's comment first string which is, kinda, header
@@ -233,14 +280,14 @@ func (app *TApp) mFormat() (err error) {
 }
 
 func (app *TApp) mShutDown() {
-	app.db.Close()
+	DB.Close()
 	rlog.Debugf("Got %d errors\n", app.errorCounter)
 }
 
 func (app *TApp) mPrepareOutputPath() {
 	if *app.pathOutput == "" {
 		var strOutputFile, strOutputPath string
-		strDir, strSourceFile := filepath.Split(app.pathCSV)
+		strDir, strSourceFile := filepath.Split(app.pathF)
 		strExt := filepath.Ext(strSourceFile)
 		if strExt != "" {
 			strOutputFile = strings.Trim(strSourceFile, "." + strExt)
@@ -254,23 +301,43 @@ func (app *TApp) mPrepareOutputPath() {
 }
 
 func (app *TApp) mOpenSource() error {
-	if app.pathCSV == "" {
+	if app.pathF == "" {
 		return errors.New("No data file provided")
 	}
 
 	var err error
 
-	if app.fCSV, err = app.mOpenFile(&app.pathCSV); err != nil {
-		return &TErrorFile{app.pathCSV, err}
+	if app.f, err = app.mOpenSourceFile(&app.pathF); err != nil {
+		return &TErrorFile{app.pathF, err}
 	}
 
 	return err
 }
 
-func fUsage() {
-	fmt.Println("Usage:")
-	fmt.Println("1st form: pool -a (generate|drop) [-d <path to db settings>]")
-	fmt.Println("2nd form: pool -a format [-o <path to output file>] <path to input file>")
-	fmt.Println("3rd form: pool -a parse [-d <path to db settings>] <path to input file>")
-	flag.PrintDefaults()
+func (app *TApp) mFlags(){
+	app.pathOptions = flag.String("d", "./config/database.json",
+		"Path to a json file with database connection information")
+	//pfSource := flag.String("s", "./data.csv", "Path to a CSV file with data to process")
+	app.actionString = flag.String("a", "parse",
+		"Action to perform; \n Available are: \n\t" +
+			" - 'parse' parses given csv file; \n\t" +
+			" - 'create' generates table in existing database; \n\t" +
+			" - 'drop' drops table in existing database; \n\t" +
+			" - 'flush' removes 'generated' flag from pools being already used" +
+			" - 'format' reformats bogus CSV to real CSV; \n\t" +
+			" - 'generate' generates phone numbers for given code range and stores to file")
+
+	app.pathOutput = flag.String("o", "", "Output file path; Used on reformatting.")
+
+	app.prefix = flag.String("p", "", "Prefix to add before each number.")
+	app.codeBegin = flag.String("b", "0",
+		"Number, beginning of code pool. If omitted, will begin from 0")
+	app.codeEnd = flag.String("e", "0",
+		"Number, ending of code pool. If omitted, will continue till the maximum code available")
+	app.codeSet = flag.String("s", "",
+		"Comma-delimeted set of numbers; the only codes to generate; \n" +
+			"If provided, -b and -e flags are ignored")
+
+	flag.Usage = fUsage
 }
+

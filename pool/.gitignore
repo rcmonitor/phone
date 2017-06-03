@@ -1,0 +1,4 @@
+*.exe
+.idea/
+config/database.json
+testdata/phone_list.txt

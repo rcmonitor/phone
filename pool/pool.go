@@ -1,10 +1,12 @@
 package main
 
 import (
-	"github.com/go-pg/pg"
 	"strconv"
+	"github.com/go-pg/pg"
+	"io"
 )
 
+type TSLPool []*TSDBMPool
 
 type TSDBMPool struct {
 	tableName struct{} `sql:"pool"`
@@ -43,7 +45,30 @@ func NewPool(slTuple TTuple) (*TSDBMPool, error) {
 	}, nil
 }
 
-func (psPool *TSDBMPool) mSave(db *pg.DB) error {
-	return db.Insert(psPool)
+func (psPool *TSDBMPool) mSave() error {
+	return DB.Insert(psPool)
+}
+
+func (psPool *TSDBMPool) mGenerate(pfSequence io.Writer, strPrefix string) (err error) {
+	for i := psPool.ValueStart; i <= psPool.ValueEnd; i ++ {
+		strPhone := strPrefix + strconv.Itoa(psPool.Code) + strconv.Itoa(i) + "\n"
+		_, err = pfSequence.Write([]byte(strPhone))
+		if err != nil { return err }
+	}
+
+	psPool.Generated = true
+	return psPool.mUpdateGenerated()
+}
+
+func (psPool *TSDBMPool) mUpdateGenerated() (err error) {
+	_, err = DB.Model(psPool).Column("generated").Update()
+	return
+}
+
+func fGetMaxCode() (int, error) {
+	var intMaxCode int
+	_, err := DB.QueryOne(pg.Scan(&intMaxCode), "SELECT MAX(code) FROM pool")
+
+	return intMaxCode, err
 }
 

@@ -336,7 +336,7 @@ func (app *TApp) mFlags(){
 		"Number, ending of code pool. If omitted, will continue till the maximum code available")
 	app.codeSet = flag.String("s", "",
 		"Comma-delimeted set of numbers; the only codes to generate; \n" +
-			"If provided, -b and -e flags are ignored")
+			"\t\tIf provided, -b and -e flags are ignored\n")
 
 	flag.Usage = fUsage
 }

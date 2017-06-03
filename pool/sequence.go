@@ -13,10 +13,10 @@ type TSequence struct {
 	SlCode []interface{}
 	File *os.File
 
-	pool TSLPool
-	limit int
-	page int
-	lastProcessedCode int
+	pool        TSLPool
+	limit       int
+	page        int
+	currentCode int
 }
 
 func (psSequence *TSequence) mGenerate() (err error) {
@@ -30,16 +30,14 @@ func (psSequence *TSequence) mGenerate() (err error) {
 
 	psSequence.mLogCodes()
 
-	defer rlog.Infof("Finished on code %d", psSequence.lastProcessedCode)
-
 	for {
 		err = psSequence.mGetNextPool()
 		if err != nil { return }
 
 		for _, psPool := range psSequence.pool {
+			psSequence.mSetNewCode(psPool.Code)
 			err = psPool.mGenerate(psSequence.File, psSequence.Prefix)
 			if err != nil { return }
-			psSequence.lastProcessedCode = psPool.Code
 		}
 
 		intLength := len(psSequence.pool)
@@ -50,6 +48,7 @@ func (psSequence *TSequence) mGenerate() (err error) {
 		psSequence.page ++
 	}
 
+	rlog.Infof("Finished on code %d", psSequence.currentCode)
 	return err
 }
 
@@ -90,4 +89,12 @@ func (psSequence *TSequence) mLogCodes() {
 
 func (psSequence *TSequence) mIsCodeSet() bool {
 	return len(psSequence.SlCode) > 0
+}
+
+func (psSequence *TSequence) mSetNewCode(intCode int) {
+	if intCode != psSequence.currentCode {
+		psSequence.currentCode = intCode
+		rlog.Debugf("Starting to generate sequence for code %d",
+			psSequence.currentCode)
+	}
 }
